@@ -33,16 +33,19 @@ for partition in ${drive}?; do
     offset=$(grep '^    offset:' <<< "$info" | egrep -o '[0-9]+')
     partitionsize=$(grep '^  size:' <<< "$info" | egrep -o '[0-9]+')
     diskblocksize=$(grep '^  block size:' <<< "$info" | egrep -o '[0-9]+')
-
-
     # Typically: e2blocksize==4096, diskblocksize==512
     # Example: offset=1048576, partitionsize=640133980160
+
+
+    # Convert lbas to byte addresses
     set - $addresses
     if [[ -z "$BYTESFLAG" ]]; then
 	set - $(for lba; do
 		    echo $((lba * diskblocksize))
 		done)
     fi
+
+    # Prune byteaddresses that are out of bounds
     set - $(for byteaddress; do
 		if [[ $byteaddress -lt $offset ||
 			    $byteaddress -ge $((offset+partitionsize)) ]]; then
@@ -53,15 +56,18 @@ for partition in ${drive}?; do
 		fi
 	    done)
 
+    # Convert byte addresses to e2fs block addresses
     set - $(for byteaddress; do
 		echo $(( (byteaddress-offset) / e2blocksize))
 	    done)
 
     Sector=${BYTESFLAG:-Sector}
 
+    # Lookup inode number for every block
     set - $(debugfs -R "icheck $*" $partition 2>/dev/null |
 		   tail -n +2 | cut -f2)
 
+    # Prune inode list of "block not found" messages
     set - $(for inode; do
 		if [[ "$inode" && "$inode" != "<block not found>" ]]; then
 		    echo $inode
@@ -71,6 +77,7 @@ for partition in ${drive}?; do
 		fi
 	    done)
 
+    # Lookup filenames for every inode
     echo "Searching for filename(s)..."
     debugfs -R "ncheck $*" $partition 
 done
