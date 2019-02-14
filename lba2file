@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/bash -x
 
 # lba2file: Given an LBA number and a drive in /dev/, print which
 # filename(s), if any, use that sector.
@@ -13,14 +13,16 @@ if [[ "$1" == "-b" ]]; then
 fi
 
 if [[ $# -lt 2 ]]; then
-    echo "Usage: lba2file  [-b]  <sector number>  /dev/sdX"
+    echo "Usage: lba2file  [-b]   /dev/sdX   <sector number ...>"
     echo "	-b: Use byte address instead of sector"
     exit 1
 fi
 
-lba=$1
-drive=$2
+drive=$1
+shift
 
+# Now all remaining args in "$@" are sector addresses.
+addresses="$@"
 
 for partition in ${drive}?; do
     info=$(udisks --show-info $partition)
@@ -32,35 +34,43 @@ for partition in ${drive}?; do
     partitionsize=$(grep '^  size:' <<< "$info" | egrep -o '[0-9]+')
     diskblocksize=$(grep '^  block size:' <<< "$info" | egrep -o '[0-9]+')
 
+
     # Typically: e2blocksize==4096, diskblocksize==512
     # Example: offset=1048576, partitionsize=640133980160
+    set - $addresses
     if [[ -z "$BYTESFLAG" ]]; then
-	byteaddress=$((lba * diskblocksize))
-    else
-	byteaddress=$lba
+	set - $(for lba; do
+		    echo $((lba * diskblocksize))
+		done)
     fi
-    if [[ $byteaddress -lt $offset ||
-	  $byteaddress -ge $((offset+partitionsize)) ]]; then
-	echo "Not in $partition"
-	continue 		# Not in this partition
-    fi
+    set - $(for byteaddress; do
+		if [[ $byteaddress -lt $offset ||
+			    $byteaddress -ge $((offset+partitionsize)) ]]; then
+		    echo "$byteaddress not in $partition" >&2
+		    continue
+		else
+		    echo $byteaddress
+		fi
+	    done)
 
-    # Shift to byteaddress within partition
-    partitionbyteaddress=$((byteaddress - offset))
+    set - $(for byteaddress; do
+		echo $(( (byteaddress-offset) / e2blocksize))
+	    done)
 
-    # Scale address by filesystem blocksize to find filesystem block number
-    e2blockaddress=$((partitionbyteaddress / e2blocksize))
-    
     Sector=${BYTESFLAG:-Sector}
-    echo "Disk $Sector $lba is at filesystem block $e2blockaddress in $partition"
-    inode=$(debugfs -R "icheck $e2blockaddress" $partition 2>/dev/null |
-		   tail -1 | cut -f2)
-    if [[ "$inode" && "$inode" != "<block not found>" ]]; then
-	echo "$Sector is used by inode $inode"
-	echo "Searching for filename(s)..."
-	debugfs -R "ncheck $inode" $partition 2>/dev/null
-    else
-	echo "$Sector is not in use."
-    fi
-done
 
+    set - $(debugfs -R "icheck $*" $partition 2>/dev/null |
+		   tail -n +2 | cut -f2)
+
+    set - $(for inode; do
+		if [[ "$inode" && "$inode" != "<block not found>" ]]; then
+		    echo $inode
+		    echo "$Sector is used by inode $inode" >&2
+		else
+		    echo "$Sector is not in use." >&2
+		fi
+	    done)
+
+    echo "Searching for filename(s)..."
+    debugfs -R "ncheck $*" $partition 
+done
