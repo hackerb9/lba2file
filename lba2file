@@ -1,7 +1,8 @@
 #!/bin/bash -x
 
-# lba2file: Given an LBA number and a drive in /dev/, print which
-# filename(s), if any, use that sector.
+# lba2file: Given  a drive in /dev/ and a sector number (LBA),
+# print which filename(s), if any, use that sector.
+# Multiple LBAs are allowed.
 
 # This is the opposite of `hdparm --fibmap /foo/bar`
 
