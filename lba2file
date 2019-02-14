@@ -13,7 +13,8 @@ if [[ "$1" == "-b" ]]; then
 fi
 
 if [[ $# -lt 2 ]]; then
-    echo "Usage: lba2file  <sector number>  /dev/sdX"
+    echo "Usage: lba2file  [-b]  <sector number>  /dev/sdX"
+    echo "	-b: Use byte address instead of sector"
     exit 1
 fi
 
@@ -50,15 +51,16 @@ for partition in ${drive}?; do
     # Scale address by filesystem blocksize to find filesystem block number
     e2blockaddress=$((partitionbyteaddress / e2blocksize))
     
-    echo "Disk ${BYTESFLAG:-Sector} $lba is at filesystem block $e2blockaddress in $partition"
+    Sector=${BYTESFLAG:-Sector}
+    echo "Disk $Sector $lba is at filesystem block $e2blockaddress in $partition"
     inode=$(debugfs -R "icheck $e2blockaddress" $partition 2>/dev/null |
 		   tail -1 | cut -f2)
     if [[ "$inode" && "$inode" != "<block not found>" ]]; then
-	echo "${BYTESFLAG:-Sector} is used by inode $inode"
+	echo "$Sector is used by inode $inode"
 	echo "Searching for filename(s)..."
 	debugfs -R "ncheck $inode" $partition 2>/dev/null
     else
-	echo "Sector is not in use."
+	echo "$Sector is not in use."
     fi
 done
 
