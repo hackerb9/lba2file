@@ -1,0 +1,53 @@
+#!/bin/bash
+
+# lba2file: Given an LBA number and a drive in /dev/, print which
+# filename(s), if any, use that sector.
+
+# This is the opposite of `hdparm --fibmap /foo/bar`
+
+# B9 Feburary 2019
+
+if [[ $# -lt 2 ]]; then
+    echo "Usage: lba2file  <sector number>  /dev/sdX"
+    exit 1
+fi
+
+lba=$1
+drive=$2
+
+
+for partition in ${drive}?; do
+    info=$(udisks --show-info $partition)
+    if ! e2blocksize=$(tune2fs -l $partition 2>/dev/null |
+			      grep '^Block size' | egrep -o '[0-9]+'); then
+	continue		# Not an Ext2/3/4 partition
+    fi
+    offset=$(grep '^    offset:' <<< "$info" | egrep -o '[0-9]+')
+    partitionsize=$(grep '^  size:' <<< "$info" | egrep -o '[0-9]+')
+    diskblocksize=$(grep '^  block size:' <<< "$info" | egrep -o '[0-9]+')
+
+    # Typically: e2blocksize==4096, diskblocksize==512
+    # Example: offset=1048576, partitionsize=640133980160
+    byteaddress=$((lba * diskblocksize))
+    if [[ $byteaddress -lt $offset ||
+	  $byteaddress -ge $((offset+partitionsize)) ]]; then
+	continue 		# Not in this partition
+    fi
+
+    # Shift to byteaddress within partition
+    partitionbyteaddress=$((byteaddress - offset))
+
+    # Scale address by filesystem blocksize to find filesystem block number
+    e2blockaddress=$((partitionbyteaddress / e2blocksize))
+    
+    echo "Disk sector $lba is at filesystem block $e2blockaddress in $partition"
+    if inode=$(debugfs -R "icheck $e2blockaddress" $partition 2>/dev/null |
+		      tail -1 | cut -f2); then
+	echo "Sector is used by inode $inode"
+	echo "Searching for filename(s)..."
+	debugfs -R "ncheck $inode" $partition 2>/dev/null
+    else
+	echo "Sector is not in use."
+    fi
+done
+
