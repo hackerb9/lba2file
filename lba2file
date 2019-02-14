@@ -7,6 +7,11 @@
 
 # B9 Feburary 2019
 
+if [[ "$1" == "-b" ]]; then
+    BYTESFLAG=Byte
+    shift
+fi
+
 if [[ $# -lt 2 ]]; then
     echo "Usage: lba2file  <sector number>  /dev/sdX"
     exit 1
@@ -28,9 +33,14 @@ for partition in ${drive}?; do
 
     # Typically: e2blocksize==4096, diskblocksize==512
     # Example: offset=1048576, partitionsize=640133980160
-    byteaddress=$((lba * diskblocksize))
+    if [[ -z "$BYTESFLAG" ]]; then
+	byteaddress=$((lba * diskblocksize))
+    else
+	byteaddress=$lba
+    fi
     if [[ $byteaddress -lt $offset ||
 	  $byteaddress -ge $((offset+partitionsize)) ]]; then
+	echo "Not in $partition"
 	continue 		# Not in this partition
     fi
 
@@ -40,10 +50,11 @@ for partition in ${drive}?; do
     # Scale address by filesystem blocksize to find filesystem block number
     e2blockaddress=$((partitionbyteaddress / e2blocksize))
     
-    echo "Disk sector $lba is at filesystem block $e2blockaddress in $partition"
-    if inode=$(debugfs -R "icheck $e2blockaddress" $partition 2>/dev/null |
-		      tail -1 | cut -f2); then
-	echo "Sector is used by inode $inode"
+    echo "Disk ${BYTESFLAG:-Sector} $lba is at filesystem block $e2blockaddress in $partition"
+    inode=$(debugfs -R "icheck $e2blockaddress" $partition 2>/dev/null |
+		   tail -1 | cut -f2)
+    if [[ "$inode" && "$inode" != "<block not found>" ]]; then
+	echo "${BYTESFLAG:-Sector} is used by inode $inode"
 	echo "Searching for filename(s)..."
 	debugfs -R "ncheck $inode" $partition 2>/dev/null
     else
