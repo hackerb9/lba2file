@@ -32,4 +32,11 @@ Inode           Pathname
 
 ## Discussion
 
-My script defaults to a sector address (often called "LBA") rather than bytes. This is because LBA is what tools like smartctl will report when there is a bad block on the drive. However, if you want to specify a bytes instead of sectors, just give the -b flag.
+My script defaults to a sector address (often called "LBA") rather than bytes. This is because LBA is what tools like `smartctl` will report when there is a bad block on the drive. However, if you want to specify an address in bytes instead of sectors, just give the -b flag.
+
+To test that this script is working you can do the reverse, looking up the LBA from the filename using `hdparm --fibmap /foo/bar`.
+
+## Alternatives
+
+You can do the calculations by hand, if you wish. See the answer to https://superuser.com/questions/490787/reverse-lookup-of-inode-file-from-offset-in-raw-device-on-linux-and-ext3-4/
+
